@@ -28,7 +28,7 @@ class AMQPProvider():
     
     instances = {}
     
-    def __init__(self, consumer_queue: str, producer_queue: str):
+    def __init__(self, consumer_queue: str, producer_queue: str, has_producer: bool = True):
         # Questa coda descrive i dati richiesti al microservizio
         self.consumer_queue = consumer_queue
         self.consumer_queue_rk = consumer_queue + '_rk'
@@ -45,10 +45,13 @@ class AMQPProvider():
             callback=self.data_received_response
         )
         
-        self.producer = AMQPProducer(
-            queue=self.producer_queue,
-            routing_key=self.producer_queue_rk
-        )
+        self.has_producer = has_producer
+        if has_producer:
+            self.producer = AMQPProducer(
+                queue=self.producer_queue,
+                routing_key=self.producer_queue_rk
+            )
+        
         
     @staticmethod
     def get_instance(amqp_provider_type: AMQPProviderType):
@@ -83,5 +86,14 @@ class AMQPProvider():
             print(e, file=sys.stderr)
             self.producer.close_connection()
     
-    def publish(self, method: str, body: str, corr_id: str):
-        self.producer.publish(method, corr_id, body)
+    def publish(self, origin: str, method: str, body: str, corr_id: str):
+        if self.has_producer:
+            self.producer.publish(origin, method, corr_id, body)
+        else:
+            producer = AMQPProducer(
+                queue=self.producer_queue + "_" + origin,
+                routing_key=self.producer_queue_rk
+            )
+            producer.start_messanger()
+            producer.publish(origin, method, corr_id, body)
+            producer.close_connection()
