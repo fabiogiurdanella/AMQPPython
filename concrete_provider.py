@@ -20,7 +20,7 @@ collections.Callable = collections.abc.Callable
 
 class ConcreteAMQPProvider(AMQPProvider):
     def __init__(self, consumer_queue: str, producer_queue: str):
-        super().__init__(consumer_queue, producer_queue)
+        super().__init__(consumer_queue, producer_queue, has_producer=False)
     
     def data_received_response(self, ch, method, props, body):
         thread = Thread(target=self._manage_data_response, args=(ch, method, props, body))
@@ -52,21 +52,14 @@ class ConcreteAMQPProvider(AMQPProvider):
             
             amqp_method = AMQPMethod(method)
             
-            if self.is_consumer_responding:
-                self.manage_data(origin, amqp_method, amqp_body, props.correlation_id)
-            else:
-                # Attendo semplicemente la risposta e verifico sia quella corretta
-                if self.corr_id == props.correlation_id:
-                    self.manage_data(origin, amqp_method, amqp_body, props.correlation_id)
-                else:
-                    data = AMQPResponse(amqp_method, AMQPStatus.ERROR, "Errore: Correlation ID non corrispondente")
-                    self.publish(AMQPMethod.EXCEPTION.value, str(data), props.correlation_id)
+            self.manage_data(origin, amqp_method, amqp_body, props.correlation_id)
+            
         except ExternalException as e:
             data = AMQPResponse(AMQPMethod.EXCEPTION, AMQPStatus.ERROR, e.message)
-            self.publish(AMQPMethod.EXCEPTION.value, str(data), props.correlation_id)
+            self.publish(origin, AMQPMethod.EXCEPTION.value, str(data), props.correlation_id)
         except Exception as e:
             data = AMQPResponse(AMQPMethod.EXCEPTION, AMQPStatus.ERROR, "Errore: " + str(e))
-            self.publish(AMQPMethod.EXCEPTION.value, str(data), props.correlation_id)
+            self.publish(origin, AMQPMethod.EXCEPTION.value, str(data), props.correlation_id)
     
     def manage_data(self, origin: str, amqp_method: AMQPMethod, amqp_body: AMQPBody, corr_id: str):
         """
